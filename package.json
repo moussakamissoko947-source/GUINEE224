@@ -1,44 +1,71 @@
 {
-  "name": "projet-kamis",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "start": "npx tsx server/index.ts",
-    "build": "npm --prefix client install && npm --prefix client run build",
-    "test": "npx tsx server/tests/runAllTests.ts && npx tsx server/tests/e2eHttpTest.ts",
-    "server": "npx tsx server/index.ts",
-    "dev:server": "npx tsx watch server/index.ts",
-    "client": "npm --prefix client run dev",
-    "build:client": "npm --prefix client run build",
-    "build:server": "npx tsc"
+  "name": "@jridgewell/remapping",
+  "version": "2.3.5",
+  "description": "Remap sequential sourcemaps through transformations to point at the original source code",
+  "keywords": [
+    "source",
+    "map",
+    "remap"
+  ],
+  "main": "dist/remapping.umd.js",
+  "module": "dist/remapping.mjs",
+  "types": "types/remapping.d.cts",
+  "files": [
+    "dist",
+    "src",
+    "types"
+  ],
+  "exports": {
+    ".": [
+      {
+        "import": {
+          "types": "./types/remapping.d.mts",
+          "default": "./dist/remapping.mjs"
+        },
+        "default": {
+          "types": "./types/remapping.d.cts",
+          "default": "./dist/remapping.umd.js"
+        }
+      },
+      "./dist/remapping.umd.js"
+    ],
+    "./package.json": "./package.json"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "scripts": {
+    "benchmark": "run-s build:code benchmark:*",
+    "benchmark:install": "cd benchmark && npm install",
+    "benchmark:only": "node --expose-gc benchmark/index.js",
+    "build": "run-s -n build:code build:types",
+    "build:code": "node ../../esbuild.mjs remapping.ts",
+    "build:types": "run-s build:types:force build:types:emit build:types:mts",
+    "build:types:force": "rimraf tsconfig.build.tsbuildinfo",
+    "build:types:emit": "tsc --project tsconfig.build.json",
+    "build:types:mts": "node ../../mts-types.mjs",
+    "clean": "run-s -n clean:code clean:types",
+    "clean:code": "tsc --build --clean tsconfig.build.json",
+    "clean:types": "rimraf dist types",
+    "test": "run-s -n test:types test:only test:format",
+    "test:format": "prettier --check '{src,test}/**/*.ts'",
+    "test:only": "mocha",
+    "test:types": "eslint '{src,test}/**/*.ts'",
+    "lint": "run-s -n lint:types lint:format",
+    "lint:format": "npm run test:format -- --write",
+    "lint:types": "npm run test:types -- --fix",
+    "prepublishOnly": "npm run-s -n build test"
+  },
+  "homepage": "https://github.com/jridgewell/sourcemaps/tree/main/packages/remapping",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jridgewell/sourcemaps.git",
+    "directory": "packages/remapping"
+  },
+  "author": "Justin Ridgewell <justin@ridgewell.name>",
+  "license": "MIT",
   "dependencies": {
-    "bcryptjs": "^3.0.3",
-    "better-sqlite3": "^13.2.0",
-    "cookie-parser": "^1.4.7",
-    "cors": "^2.8.6",
-    "dotenv": "^18.0.10",
-    "express": "^5.3.0",
-    "helmet": "^8.3.0",
-    "multer": "^2.5.0",
-    "nodemailer": "^10.6.1",
-    "tsx": "^4.23.15",
-    "uuid": "^14.0.3"
+    "@jridgewell/gen-mapping": "^0.3.5",
+    "@jridgewell/trace-mapping": "^0.3.24"
   },
   "devDependencies": {
-    "@types/bcryptjs": "^2.4.6",
-    "@types/better-sqlite3": "^9.6.0",
-    "@types/cookie-parser": "^1.4.10",
-    "@types/cors": "^2.8.19",
-    "@types/express": "^5.0.6",
-    "@types/multer": "^2.3.0",
-    "@types/node": "^26.6.6",
-    "@types/nodemailer": "^8.0.2",
-    "@types/uuid": "^10.0.0",
-    "typescript": "^7.0.2"
+    "source-map": "0.6.1"
   }
 }

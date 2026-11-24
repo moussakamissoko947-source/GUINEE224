@@ -1,101 +1,218 @@
-# Kamis Docs — Coffre-fort de Documents & Fichiers Privé
+# @jridgewell/remapping
 
-Application web sécurisée de sauvegarde et de gestion de documents personnels et professionnels, conçue selon les spécifications strictes du [PRD](./PRD%20—%20Kamis%20Docs.md) et du [TRD](./TRD%20—%20Kamis%20Docs.md).
+> Remap sequential sourcemaps through transformations to point at the original source code
 
----
+Remapping allows you to take the sourcemaps generated through transforming your code and "remap"
+them to the original source locations. Think "my minified code, transformed with babel and bundled
+with webpack", all pointing to the correct location in your original source code.
 
-## 🎯 Fonctionnalités Clés
+With remapping, none of your source code transformations need to be aware of the input's sourcemap,
+they only need to generate an output sourcemap. This greatly simplifies building custom
+transformations (think a find-and-replace).
 
-### 1. Comptes & Authentification Sécurisée
-- **Inscription avec validation e-mail (PR-ACC-01)** : Jeton cryptographique à usage unique (32 octets hex) avec expiration 24h.
-- **Authentification par session (PR-ACC-02)** : Cookie HTTP-Only `SameSite=Lax`, révocation de session en base de données.
-- **Réinitialisation de mot de passe (PR-ACC-03)** : Réponse non révélatrice pour prévenir l'énumération de comptes, révocation immédiate de toutes les anciennes sessions après réinitialisation.
-- **Cloisonnement strict (PR-ACC-05)** : Isolation stricte inter-comptes côté serveur (`file.owner_user_id = current_user.id`). Toute tentative d'accès non autorisé est journalisée et masquée.
-- **Droit à l'effacement (PR-DAT-02)** : Suppression définitive du compte avec destruction de tous les fichiers du stockage et de la base de données.
+## Installation
 
-### 2. Gestion des Fichiers & Quota
-- **Téléversement multi-fichiers avec progression (PR-FIL-01)** : Glisser-déposer (Drag & Drop), sélection multiple, barres de progression individuelles.
-- **Contrôle strict des quotas côté serveur (PR-FIL-06)** : Quota par défaut de 5 Go par compte, vérification avant écriture et refus immédiat sans résidu en cas de dépassement.
-- **Limitation de taille (PR-FIL-02)** : 100 Mo max par fichier.
-- **Noms de fichiers sécurisés (PR-FIL-07)** : Nettoyage contre les attaques de traversée de répertoire (`../../`). Le chemin physique utilise des clés UUID opaques indépendantes du nom fourni par le client.
-- **Téléchargement sécurisé (PR-FIL-04)** : En-têtes `Content-Disposition: attachment`, `X-Content-Type-Options: nosniff`.
-- **Aperçu multimédia intégré** : Images (zoom), vidéos et fichiers audio (lecteurs HTML5), texte/code brut et documents PDF.
-- **Recherche & Filtres** : Recherche instantanée par nom, filtrage par catégorie (Documents, Images, Vidéos, Audio, Archives), tri par date, nom ou taille.
-
-### 3. Observabilité & Audit de Sécurité
-- Journalisation structurée en base de données (`audit_logs`) sans fuite de mots de passe ou de contenus de fichiers.
-- Boîte de réception Dev (`/api/dev/mailbox`) permettant de tester les liens d'activation et de réinitialisation sans configuration SMTP externe.
-
----
-
-## 🏗️ Architecture Technique
-
-```
-projet-kamis/
-├── server/                   # Backend Node.js / Express / TypeScript
-│   ├── config.ts             # Configuration centralisée & variables d'environnement
-│   ├── app.ts                # Application Express, middlewares de sécurité (Helmet, CORS)
-│   ├── index.ts              # Point d'entrée serveur (port 5000)
-│   ├── db/
-│   │   ├── database.ts       # Connexion SQLite (better-sqlite3), WAL, foreign keys
-│   │   └── repositories/     # Repositories (User, Session, File, Token, Audit)
-│   ├── services/
-│   │   ├── authService.ts    # Inscription, connexion, validation, réinitialisation
-│   │   ├── fileService.ts    # Gestion fichiers, assainissement, calcul de quota
-│   │   ├── storageService.ts # Fournisseur de stockage privé (LocalStorageProvider)
-│   │   ├── mailService.ts    # Service de messagerie (SMTP & boîte dev)
-│   │   └── auditService.ts   # Journal d'audit de sécurité
-│   ├── middleware/
-│   │   ├── authMiddleware.ts # Vérification de session et contrôle d'accès
-│   │   ├── rateLimiter.ts    # Limitation de débit (brute-force protection)
-│   │   └── errorHandler.ts  # Formatage unifié des erreurs
-│   ├── routes/               # Routes REST (/api/auth, /api/files, /api/account, etc.)
-│   └── tests/
-│       ├── runAllTests.ts    # 24 tests unitaires et d'isolation inter-comptes
-│       └── e2eHttpTest.ts    # Test d'intégration bout-en-bout HTTP
-├── client/                   # Frontend React 19 + Vite 8 + Tailwind CSS v4
-│   ├── src/
-│   │   ├── api/client.ts     # Client d'API typé
-│   │   ├── context/          # AuthContext et NotificationContext (Toaster)
-│   │   ├── components/       # QuotaGauge, Navbar, Sidebar, Dropzone, Modales, Tables
-│   │   ├── pages/            # Dashboard, Connexion, Inscription, Vérification, Paramètres
-│   │   └── utils/            # Formatage d'octets, dates en français, catégories
-│   └── dist/                 # Application web compilée servie par le backend
-└── data/                     # Base SQLite et stockage privé des objets
+```sh
+npm install @jridgewell/remapping
 ```
 
----
+## Usage
 
-## 🚀 Démarrage Rapide
+```typescript
+function remapping(
+  map: SourceMap | SourceMap[],
+  loader: (file: string, ctx: LoaderContext) => (SourceMap | null | undefined),
+  options?: { excludeContent: boolean, decodedMappings: boolean }
+): SourceMap;
 
-### 1. Lancer les tests automatisés
-
-```bash
-npm test
+// LoaderContext gives the loader the importing sourcemap, tree depth, the ability to override the
+// "source" location (where child sources are resolved relative to, or the location of original
+// source), and the ability to override the "content" of an original source for inclusion in the
+// output sourcemap.
+type LoaderContext = {
+ readonly importer: string;
+ readonly depth: number;
+ source: string;
+ content: string | null | undefined;
+}
 ```
-*Exécute la suite complète de 24 tests unitaires et de sécurité multi-tenant, suivie du test end-to-end HTTP.*
 
-### 2. Démarrer le serveur complet (Backend + Frontend intégré)
+`remapping` takes the final output sourcemap, and a `loader` function. For every source file pointer
+in the sourcemap, the `loader` will be called with the resolved path. If the path itself represents
+a transformed file (it has a sourcmap associated with it), then the `loader` should return that
+sourcemap. If not, the path will be treated as an original, untransformed source code.
 
-```bash
-npm run server
+```js
+// Babel transformed "helloworld.js" into "transformed.js"
+const transformedMap = JSON.stringify({
+  file: 'transformed.js',
+  // 1st column of 2nd line of output file translates into the 1st source
+  // file, line 3, column 2
+  mappings: ';CAEE',
+  sources: ['helloworld.js'],
+  version: 3,
+});
+
+// Uglify minified "transformed.js" into "transformed.min.js"
+const minifiedTransformedMap = JSON.stringify({
+  file: 'transformed.min.js',
+  // 0th column of 1st line of output file translates into the 1st source
+  // file, line 2, column 1.
+  mappings: 'AACC',
+  names: [],
+  sources: ['transformed.js'],
+  version: 3,
+});
+
+const remapped = remapping(
+  minifiedTransformedMap,
+  (file, ctx) => {
+
+    // The "transformed.js" file is an transformed file.
+    if (file === 'transformed.js') {
+      // The root importer is empty.
+      console.assert(ctx.importer === '');
+      // The depth in the sourcemap tree we're currently loading.
+      // The root `minifiedTransformedMap` is depth 0, and its source children are depth 1, etc.
+      console.assert(ctx.depth === 1);
+
+      return transformedMap;
+    }
+
+    // Loader will be called to load transformedMap's source file pointers as well.
+    console.assert(file === 'helloworld.js');
+    // `transformed.js`'s sourcemap points into `helloworld.js`.
+    console.assert(ctx.importer === 'transformed.js');
+    // This is a source child of `transformed`, which is a source child of `minifiedTransformedMap`.
+    console.assert(ctx.depth === 2);
+    return null;
+  }
+);
+
+console.log(remapped);
+// {
+//   file: 'transpiled.min.js',
+//   mappings: 'AAEE',
+//   sources: ['helloworld.js'],
+//   version: 3,
+// };
 ```
-*Le serveur démarre sur le port configuré et sert à la fois les API REST `/api/*` et l'interface web React officielle.*
 
-### 3. Mode développement (avec rechargement à chaud Vite)
+In this example, `loader` will be called twice:
 
-- Terminal 1 : `npm run dev:server` (serveur backend avec `tsx watch`)
-- Terminal 2 : `npm run client` (serveur Vite frontend sur `http://localhost:5173`)
+1. `"transformed.js"`, the first source file pointer in the `minifiedTransformedMap`. We return the
+   associated sourcemap for it (its a transformed file, after all) so that sourcemap locations can
+   be traced through it into the source files it represents.
+2. `"helloworld.js"`, our original, unmodified source code. This file does not have a sourcemap, so
+   we return `null`.
 
----
+The `remapped` sourcemap now points from `transformed.min.js` into locations in `helloworld.js`. If
+you were to read the `mappings`, it says "0th column of the first line output line points to the 1st
+column of the 2nd line of the file `helloworld.js`".
 
-## 🔒 Modèle de Sécurité Implémenté
+### Multiple transformations of a file
 
-| Menace | Mitigation Kamis Docs |
-| --- | --- |
-| **Accès inter-comptes (IDOR)** | Vérification stricte systématique `owner_user_id = current_user.id`. Les identifiants forgés renvoient une erreur uniforme 404/403 et déclenchent un événement d'audit `SECURITY_CROSS_TENANT_DENIED`. |
-| **Attaque par force brute** | Rate-limiter en mémoire sur `/api/auth/login`, `/api/auth/register` et `/api/auth/password-reset/*`. |
-| **Vol de session** | Cookie de session `HttpOnly`, `SameSite=Lax`, `Secure` en HTTPS, avec révocation immédiate en base de données lors de la déconnexion ou de la réinitialisation de mot de passe. |
-| **Traversée de répertoires** | Nom d'origine assaini (`sanitizeFilename`) ; le fichier sur disque utilise une clé UUID v4 aléatoire hors de la racine web (`LocalStorageProvider.resolveSafePath`). |
-| **Dépassement de quota** | Contrôle pré-écriture transactionnel ; tout dépassement de quota (5 Go) est rejeté immédiatement avec code d'erreur explicite sans laisser de résidu corrompu. |
-| **Exécution de script côté client** | En-têtes `X-Content-Type-Options: nosniff`, téléchargements forcés en `attachment` pour les formats non sûrs. |
+As a convenience, if you have multiple single-source transformations of a file, you may pass an
+array of sourcemap files in the order of most-recent transformation sourcemap first. Note that this
+changes the `importer` and `depth` of each call to our loader. So our above example could have been
+written as:
+
+```js
+const remapped = remapping(
+  [minifiedTransformedMap, transformedMap],
+  () => null
+);
+
+console.log(remapped);
+// {
+//   file: 'transpiled.min.js',
+//   mappings: 'AAEE',
+//   sources: ['helloworld.js'],
+//   version: 3,
+// };
+```
+
+### Advanced control of the loading graph
+
+#### `source`
+
+The `source` property can overridden to any value to change the location of the current load. Eg,
+for an original source file, it allows us to change the location to the original source regardless
+of what the sourcemap source entry says. And for transformed files, it allows us to change the
+relative resolving location for child sources of the loaded sourcemap.
+
+```js
+const remapped = remapping(
+  minifiedTransformedMap,
+  (file, ctx) => {
+
+    if (file === 'transformed.js') {
+      // We pretend the transformed.js file actually exists in the 'src/' directory. When the nested
+      // source files are loaded, they will now be relative to `src/`.
+      ctx.source = 'src/transformed.js';
+      return transformedMap;
+    }
+
+    console.assert(file === 'src/helloworld.js');
+    // We could futher change the source of this original file, eg, to be inside a nested directory
+    // itself. This will be reflected in the remapped sourcemap.
+    ctx.source = 'src/nested/transformed.js';
+    return null;
+  }
+);
+
+console.log(remapped);
+// {
+//   …,
+//   sources: ['src/nested/helloworld.js'],
+// };
+```
+
+
+#### `content`
+
+The `content` property can be overridden when we encounter an original source file. Eg, this allows
+you to manually provide the source content of the original file regardless of whether the
+`sourcesContent` field is present in the parent sourcemap. It can also be set to `null` to remove
+the source content.
+
+```js
+const remapped = remapping(
+  minifiedTransformedMap,
+  (file, ctx) => {
+
+    if (file === 'transformed.js') {
+      // transformedMap does not include a `sourcesContent` field, so usually the remapped sourcemap
+      // would not include any `sourcesContent` values.
+      return transformedMap;
+    }
+
+    console.assert(file === 'helloworld.js');
+    // We can read the file to provide the source content.
+    ctx.content = fs.readFileSync(file, 'utf8');
+    return null;
+  }
+);
+
+console.log(remapped);
+// {
+//   …,
+//   sourcesContent: [
+//     'console.log("Hello world!")',
+//   ],
+// };
+```
+
+### Options
+
+#### excludeContent
+
+By default, `excludeContent` is `false`. Passing `{ excludeContent: true }` will exclude the
+`sourcesContent` field from the returned sourcemap. This is mainly useful when you want to reduce
+the size out the sourcemap.
+
+#### decodedMappings
+
+By default, `decodedMappings` is `false`. Passing `{ decodedMappings: true }` will leave the
+`mappings` field in a [decoded state](https://github.com/rich-harris/sourcemap-codec) instead of
+encoding into a VLQ string.
